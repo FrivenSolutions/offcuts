@@ -794,6 +794,33 @@ button.tag:hover {
 .narrow {
   max-width: 380px;
 }
+.import-check {
+  margin-top: 14px;
+}
+.import-list {
+  margin: 4px 0 10px;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+.import-mode {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 0 0 14px;
+}
+.import-mode legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.import-mode label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 6px 0;
+}
+.snippet-actions.start {
+  justify-content: flex-start;
+}
 
 /* ---------- Small screens ---------- */
 @media (max-width: 720px) {

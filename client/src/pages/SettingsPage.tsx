@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { ImportPanel } from "../components/ImportPanel";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -78,6 +79,8 @@ export function SettingsPage() {
           For a full backup, copy the <code>offcuts.db</code> file from the data folder.
         </p>
       </section>
+
+      <ImportPanel />
 
       <section className="panel">
         <h2>Lost your phone?</h2>

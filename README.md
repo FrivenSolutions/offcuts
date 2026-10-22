@@ -8,11 +8,12 @@ Offcuts is a self-hosted code snippet manager. One person owns it. Visitors can 
   Example: the snippet "REST API Patches" holds the fragments "Lookup", "People Picker" and "Choice".
 - **Syntax highlighting** for Power Query M, DAX, Power Fx, Power Automate, PySpark, Python, SQL, JSON, YAML, PowerShell, JavaScript, TypeScript, HTML, CSS, Bash, C# and Markdown.
 - **Language detection.** When you paste code, Offcuts guesses the language. A dropdown lets you change it.
-- **Search, filter and sort.** Search looks in titles, fragment titles, code, descriptions, sources and tags. Filter by tag, language and visibility. Sort by title or date.
+- **Search, filter and sort.** Search looks in titles, fragment titles, code, descriptions, sources and tags. Filter by tag, language and visibility. Sort by title or date. The app remembers your filters when you open a snippet and go back. Click the Offcuts logo to clear them.
 - **Card view and list view.** Both views show a highlighted preview of the code.
 - **Public snippets.** The home page shows public snippets to everyone. A login button gives access to the rest.
 - **Two-factor login.** Password plus a TOTP code from an authenticator app. (TOTP = time-based one-time password, the 6-digit code that changes every 30 seconds.)
 - **Light and dark themes**, and a layout that works on a phone.
+- **Import and export** as JSON.
 - **One SQLite database file.** Back up one file to back up everything.
 
 ## Install with Docker
@@ -122,6 +123,20 @@ All three commands log out every session.
 
 - **Full backup:** copy `offcuts.db` from the data folder. Stop the app first, or copy the `-wal` and `-shm` files too.
 - **Export:** Settings → Export snippets downloads all snippets as JSON.
+
+## Import
+
+Settings → Import reads a JSON file made by Export. Use it to restore a backup, or to move snippets to another Offcuts server.
+
+1. Choose the file. Offcuts checks it and saves nothing yet.
+2. Read the summary. It lists items that cannot be imported, such as an unknown language.
+3. If some titles already exist, choose what to do with them:
+   - **Skip:** keep the existing snippets.
+   - **Replace:** overwrite the existing snippets with the imported ones.
+   - **Keep both:** add the imported snippets as new ones.
+4. Click **Import**.
+
+The import keeps the created and updated dates from the file. The title match ignores upper and lower case.
 
 ## Security
 

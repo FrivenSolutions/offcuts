@@ -28,7 +28,9 @@ export function createApp(db: DB) {
   });
 
   app.use(cookieParser());
-  app.use(express.json({ limit: "10mb" }));
+  const json = express.json({ limit: "10mb" });
+  // The import route reads its own, larger body after it checks the login.
+  app.use((req, res, next) => (req.path === "/api/import" ? next() : json(req, res, next)));
 
   // Blocks CSRF (cross-site request forgery). Other sites cannot add a custom
   // header to a request without the server's permission, and this server never gives it.

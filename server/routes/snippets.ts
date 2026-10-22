@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import express, { Router, type Request } from "express";
 import { isLanguageId } from "../../shared/languages.js";
 import { requireAuth } from "../auth.js";
 import type { DB } from "../db.js";
@@ -28,6 +28,23 @@ interface SnippetInput {
   isPublic: boolean;
   tags: string[];
   fragments: { title: string; code: string }[];
+}
+
+interface Timestamps {
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+type DuplicateMode = "skip" | "replace" | "keep";
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+const MAX_IMPORT = 10_000;
+
+/** Keeps the dates from an import file when they are valid ISO dates. */
+function importTimestamps(raw: unknown): Timestamps {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const pick = (v: unknown) => (typeof v === "string" && ISO_DATE.test(v) ? v : undefined);
+  return { createdAt: pick(r.createdAt), updatedAt: pick(r.updatedAt) };
 }
 
 const PREVIEW_LINES = 12;
@@ -178,20 +195,31 @@ export function snippetRoutes(db: DB): Router {
     res.json(full(row));
   });
 
-  const save = db.transaction((id: number | null, input: SnippetInput): number => {
+  const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+
+  const save = db.transaction((id: number | null, input: SnippetInput, times: Timestamps = {}): number => {
     let snippetId: number;
     if (id === null) {
       const info = db
-        .prepare("INSERT INTO snippets (title, description, source, language, is_public) VALUES (?, ?, ?, ?, ?)")
-        .run(input.title, input.description, input.source, input.language, input.isPublic ? 1 : 0);
+        .prepare(
+          `INSERT INTO snippets (title, description, source, language, is_public, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, COALESCE(?, ${NOW}), COALESCE(?, ${NOW}))`,
+        )
+        .run(
+          input.title, input.description, input.source, input.language, input.isPublic ? 1 : 0,
+          times.createdAt ?? null, times.updatedAt ?? null,
+        );
       snippetId = Number(info.lastInsertRowid);
     } else {
       const info = db
         .prepare(
           `UPDATE snippets SET title = ?, description = ?, source = ?, language = ?, is_public = ?,
-           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+           created_at = COALESCE(?, created_at), updated_at = COALESCE(?, ${NOW}) WHERE id = ?`,
         )
-        .run(input.title, input.description, input.source, input.language, input.isPublic ? 1 : 0, id);
+        .run(
+          input.title, input.description, input.source, input.language, input.isPublic ? 1 : 0,
+          times.createdAt ?? null, times.updatedAt ?? null, id,
+        );
       if (info.changes === 0) return 0;
       snippetId = id;
       db.prepare("DELETE FROM fragments WHERE snippet_id = ?").run(id);
@@ -249,6 +277,68 @@ export function snippetRoutes(db: DB): Router {
       )
       .all();
     res.json(rows);
+  });
+
+  // Import an Offcuts export file. With dryRun, only checks the file and reports duplicates.
+  // The global JSON parser skips this path, so requireAuth runs before a large body is read.
+  r.post("/import", requireAuth, express.json({ limit: "50mb" }), (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const list = body.snippets;
+    if (!Array.isArray(list)) {
+      res.status(400).json({ error: "The file has no list of snippets." });
+      return;
+    }
+    if (list.length > MAX_IMPORT) {
+      res.status(400).json({ error: `One import can hold at most ${MAX_IMPORT} snippets.` });
+      return;
+    }
+    const dryRun = body.dryRun === true;
+    const mode = body.mode as DuplicateMode;
+    if (!dryRun && !["skip", "replace", "keep"].includes(mode)) {
+      res.status(400).json({ error: "Choose how to handle duplicate titles." });
+      return;
+    }
+
+    const findByTitle = db.prepare<[string], { id: number }>(
+      "SELECT id FROM snippets WHERE title = ? COLLATE NOCASE ORDER BY id LIMIT 1",
+    );
+    const valid: { input: SnippetInput; times: Timestamps }[] = [];
+    const invalid: { index: number; title: string; error: string }[] = [];
+    list.forEach((raw, index) => {
+      try {
+        valid.push({ input: parseSnippetInput(raw), times: importTimestamps(raw) });
+      } catch (e) {
+        const t = (raw as { title?: unknown } | null)?.title;
+        invalid.push({ index, title: typeof t === "string" && t ? t : `Item ${index + 1}`, error: (e as Error).message });
+      }
+    });
+
+    if (dryRun) {
+      res.json({
+        total: list.length,
+        valid: valid.length,
+        invalid,
+        duplicates: valid.filter((v) => findByTitle.get(v.input.title)).map((v) => v.input.title),
+      });
+      return;
+    }
+
+    const result = { created: 0, replaced: 0, skipped: 0, failed: invalid.length };
+    db.transaction(() => {
+      for (const { input, times } of valid) {
+        const existing = mode === "keep" ? undefined : findByTitle.get(input.title);
+        if (existing && mode === "skip") {
+          result.skipped++;
+        } else if (existing) {
+          save(existing.id, input, times);
+          result.replaced++;
+        } else {
+          save(null, input, times);
+          result.created++;
+        }
+      }
+    })();
+    res.json(result);
   });
 
   r.get("/export", requireAuth, (_req, res) => {

@@ -172,3 +172,71 @@ describe("snippets", () => {
     expect(r.status).toBe(204);
   });
 });
+
+describe("import", () => {
+  const file = {
+    version: 1,
+    snippets: [
+      {
+        title: "secret MEASURE",
+        description: "Imported copy",
+        language: "dax",
+        tags: ["finance"],
+        createdAt: "2023-05-01T10:00:00.000Z",
+        updatedAt: "2023-06-01T10:00:00.000Z",
+        fragments: [{ title: "Margin", code: "Margin = DIVIDE([Profit], [Revenue])" }],
+      },
+      { title: "Brand new", language: "sql", fragments: [{ title: "", code: "SELECT 1" }] },
+      { title: "Bad language", language: "cobol", fragments: [{ code: "" }] },
+    ],
+  };
+
+  async function countByTitle(title: string): Promise<number> {
+    const list = (await api("GET", `/api/snippets?q=${encodeURIComponent(title)}`)).body as { title: string }[];
+    return list.filter((s) => s.title.toLowerCase() === title.toLowerCase()).length;
+  }
+
+  it("requires login", async () => {
+    const r = await api("POST", "/api/import", { ...file, dryRun: true }, false);
+    expect(r.status).toBe(401);
+  });
+
+  it("checks the file without saving on a dry run", async () => {
+    const r = await api("POST", "/api/import", { ...file, dryRun: true });
+    expect(r.body).toMatchObject({ total: 3, valid: 2, duplicates: ["secret MEASURE"] });
+    expect(r.body.invalid).toEqual([{ index: 2, title: "Bad language", error: "Language is not supported." }]);
+    expect(await countByTitle("Brand new")).toBe(0);
+  });
+
+  it("needs a duplicate mode for a real import", async () => {
+    expect((await api("POST", "/api/import", file)).status).toBe(400);
+  });
+
+  it("skips duplicates", async () => {
+    const r = await api("POST", "/api/import", { ...file, mode: "skip" });
+    expect(r.body).toEqual({ created: 1, replaced: 0, skipped: 1, failed: 1 });
+    expect(await countByTitle("Secret measure")).toBe(1);
+  });
+
+  it("replaces duplicates and keeps the file's dates", async () => {
+    const r = await api("POST", "/api/import", { ...file, mode: "replace" });
+    expect(r.body).toEqual({ created: 0, replaced: 2, skipped: 0, failed: 1 });
+    const [s] = (await api("GET", "/api/snippets?q=Imported")).body;
+    expect(s).toMatchObject({ title: "secret MEASURE", description: "Imported copy", createdAt: "2023-05-01T10:00:00.000Z" });
+    expect(await countByTitle("Brand new")).toBe(1);
+  });
+
+  it("keeps both copies", async () => {
+    const r = await api("POST", "/api/import", { ...file, mode: "keep" });
+    expect(r.body).toEqual({ created: 2, replaced: 0, skipped: 0, failed: 1 });
+    expect(await countByTitle("Brand new")).toBe(2);
+  });
+
+  it("reads back its own export", async () => {
+    const before = (await api("GET", "/api/snippets")).body.length;
+    const exported = (await api("GET", "/api/export")).body;
+    const r = await api("POST", "/api/import", { snippets: exported.snippets, mode: "keep" });
+    expect(r.body.created).toBe(before);
+    expect((await api("GET", "/api/snippets")).body.length).toBe(before * 2);
+  });
+});

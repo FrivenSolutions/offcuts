@@ -5,6 +5,7 @@ import { LanguageBadge, TagList, VisibilityBadge } from "../components/Badges";
 import { CodeBlock } from "../components/CodeBlock";
 import { api, type SnippetSummary, type TagCount } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { rememberBrowse } from "../lib/browseState";
 
 type View = "cards" | "list";
 
@@ -56,6 +57,10 @@ export function BrowsePage() {
     const has = activeTags.some((t) => t.toLowerCase() === lower);
     setParam("tags", (has ? activeTags.filter((t) => t.toLowerCase() !== lower) : [...activeTags, tag]).join(","));
   }
+
+  useEffect(() => {
+    rememberBrowse(params.toString());
+  }, [params]);
 
   // Wait until typing stops before searching.
   useEffect(() => {
