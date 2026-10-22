@@ -1,0 +1,49 @@
+{
+  "name": "offcuts",
+  "version": "0.1.0",
+  "description": "Self-hosted code snippet manager with two-factor login and Power Platform language support.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run",
+    "start": "node build/server/index.js",
+    "cli": "node build/server/cli.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.1.0",
+    "otpauth": "^9.4.1",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.18.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^9.2.0",
+    "highlight.js": "^11.11.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.8.0",
+    "react-simple-code-editor": "^0.14.1",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

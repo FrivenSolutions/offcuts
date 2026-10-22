@@ -1,0 +1,174 @@
+import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createApp } from "./app.js";
+import { getUser, totpFor } from "./auth.js";
+import { openDatabase, type DB } from "./db.js";
+import { ensureSetupCode } from "./routes/auth.js";
+
+let db: DB;
+let server: Server;
+let base: string;
+let cookie = "";
+
+async function api(method: string, path: string, body?: unknown, useCookie = true) {
+  const res = await fetch(base + path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Offcuts": "1",
+      ...(useCookie && cookie ? { Cookie: cookie } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const setCookie = res.headers.get("set-cookie");
+  if (useCookie && setCookie) cookie = setCookie.split(";")[0]!;
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : null };
+}
+
+function code(offsetSteps = 0): string {
+  const user = getUser(db)!;
+  return totpFor(user.totp_secret, user.username).generate({ timestamp: Date.now() + offsetSteps * 30_000 });
+}
+
+beforeAll(async () => {
+  db = openDatabase(":memory:");
+  server = createApp(db).listen(0);
+  await new Promise((r) => server.once("listening", r));
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+
+afterAll(() => {
+  server.close();
+  db.close();
+});
+
+describe("auth flow", () => {
+  it("requires setup on first run", async () => {
+    const r = await api("GET", "/api/auth/status");
+    expect(r.body.setupRequired).toBe(true);
+  });
+
+  it("rejects setup without the correct setup code", async () => {
+    ensureSetupCode(db);
+    const r = await api("POST", "/api/auth/setup", { setupCode: "nope", username: "justin", password: "a-long-password" });
+    expect(r.status).toBe(403);
+  });
+
+  it("sets up the account and enrolls TOTP", async () => {
+    const setupCode = ensureSetupCode(db)!;
+    let r = await api("POST", "/api/auth/setup", { setupCode, username: "justin", password: "a-long-password" });
+    expect(r.status).toBe(200);
+    r = await api("GET", "/api/auth/enroll");
+    expect(r.body.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+    r = await api("POST", "/api/auth/enroll", { code: "000000" });
+    expect(r.status).toBe(400);
+    r = await api("POST", "/api/auth/enroll", { code: code() });
+    expect(r.status).toBe(200);
+    r = await api("GET", "/api/auth/status");
+    expect(r.body).toMatchObject({ setupRequired: false, stage: "full", username: "justin" });
+  });
+
+  it("blocks a second setup", async () => {
+    const r = await api("POST", "/api/auth/setup", { setupCode: "123456", username: "x", password: "a-long-password" }, false);
+    expect(r.status).toBe(409);
+  });
+
+  it("logs in with password and TOTP, and blocks code reuse", async () => {
+    await api("POST", "/api/auth/logout");
+    let r = await api("POST", "/api/auth/login", { username: "justin", password: "wrong-password" });
+    expect(r.status).toBe(401);
+    r = await api("POST", "/api/auth/login", { username: "Justin", password: "a-long-password" });
+    expect(r.body.next).toBe("totp");
+    // Password alone must not give access.
+    r = await api("POST", "/api/snippets", { title: "x", language: "sql", fragments: [{ code: "" }] });
+    expect(r.status).toBe(401);
+    // The code from enrollment was already used.
+    r = await api("POST", "/api/auth/totp", { code: code() });
+    expect(r.body).toEqual({ error: "The code is not correct." });
+    r = await api("POST", "/api/auth/totp", { code: code(1) });
+    expect(r.status).toBe(200);
+  });
+
+  it("rejects writes without the CSRF header", async () => {
+    const res = await fetch(base + "/api/auth/logout", { method: "POST", headers: { Cookie: cookie } });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("snippets", () => {
+  let publicId = 0;
+
+  it("creates public and private snippets", async () => {
+    let r = await api("POST", "/api/snippets", {
+      title: "REST API Patches",
+      source: "https://learn.microsoft.com/sharepoint/dev",
+      language: "powerautomate",
+      isPublic: true,
+      tags: ["sharepoint", "http", "SharePoint"],
+      fragments: [
+        { title: "Lookup", code: `{ "ProjectId": @{triggerBody()?['ID']} }` },
+        { title: "People Picker", code: `{ "OwnerId": @{outputs('Get_user')?['body/Id']} }` },
+        { title: "Choice", code: `{ "Status": "Active" }` },
+      ],
+    });
+    expect(r.status).toBe(201);
+    expect(r.body.tags).toEqual(["http", "sharepoint"]);
+    expect(r.body.fragments.map((f: { title: string }) => f.title)).toEqual(["Lookup", "People Picker", "Choice"]);
+    publicId = r.body.id;
+
+    r = await api("POST", "/api/snippets", {
+      title: "Secret measure",
+      language: "dax",
+      tags: ["finance"],
+      fragments: [{ title: "Margin", code: "Margin = DIVIDE([Profit], [Sales])" }],
+    });
+    expect(r.status).toBe(201);
+  });
+
+  it("rejects an unknown language", async () => {
+    const r = await api("POST", "/api/snippets", { title: "x", language: "cobol", fragments: [{ code: "" }] });
+    expect(r.status).toBe(400);
+  });
+
+  it("shows only public snippets to visitors", async () => {
+    let r = await api("GET", "/api/snippets", undefined, false);
+    expect(r.body.map((s: { title: string }) => s.title)).toEqual(["REST API Patches"]);
+    r = await api("GET", "/api/tags", undefined, false);
+    expect(r.body.map((t: { tag: string }) => t.tag)).toEqual(["http", "sharepoint"]);
+    r = await api("GET", "/api/snippets", undefined, true);
+    expect(r.body).toHaveLength(2);
+  });
+
+  it("hides a private snippet from visitors", async () => {
+    const list = await api("GET", "/api/snippets?q=Secret");
+    const id = list.body[0].id;
+    expect((await api("GET", `/api/snippets/${id}`, undefined, false)).status).toBe(404);
+    expect((await api("GET", `/api/snippets/${id}`)).status).toBe(200);
+  });
+
+  it("searches inside code and fragment titles, and filters by tag", async () => {
+    expect((await api("GET", "/api/snippets?q=triggerBody")).body).toHaveLength(1);
+    expect((await api("GET", "/api/snippets?q=people%20picker")).body).toHaveLength(1);
+    expect((await api("GET", "/api/snippets?q=100%25")).body).toHaveLength(0);
+    expect((await api("GET", "/api/snippets?tags=finance")).body[0].title).toBe("Secret measure");
+    expect((await api("GET", "/api/snippets?language=dax")).body).toHaveLength(1);
+    const sorted = await api("GET", "/api/snippets?sort=-title");
+    expect(sorted.body.map((s: { title: string }) => s.title)).toEqual(["Secret measure", "REST API Patches"]);
+  });
+
+  it("updates and deletes", async () => {
+    let r = await api("PUT", `/api/snippets/${publicId}`, {
+      title: "REST API Patches",
+      language: "powerautomate",
+      isPublic: false,
+      tags: [],
+      fragments: [{ title: "Only one", code: "{}" }],
+    });
+    expect(r.body.fragments).toHaveLength(1);
+    expect((await api("GET", "/api/snippets", undefined, false)).body).toHaveLength(0);
+    r = await api("DELETE", `/api/snippets/${publicId}`);
+    expect(r.status).toBe(204);
+  });
+});

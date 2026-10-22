@@ -1,0 +1,19 @@
+services:
+  offcuts:
+    build: .
+    image: offcuts:latest
+    container_name: offcuts
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Trust a reverse proxy on a private network. See README for options.
+      TRUST_PROXY: "loopback, linklocal, uniquelocal"
+      # "auto" marks the login cookie Secure when the proxy says the request used HTTPS.
+      COOKIE_SECURE: "auto"
+      SESSION_DAYS: "30"
+    volumes:
+      - offcuts-data:/data
+
+volumes:
+  offcuts-data:
