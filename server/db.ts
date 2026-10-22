@@ -3,7 +3,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { config } from "./config.js";
 
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE user (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -50,6 +50,31 @@ const MIGRATIONS: string[] = [
   `,
   // 2: a comment on each fragment.
   `ALTER TABLE fragments ADD COLUMN comment TEXT NOT NULL DEFAULT '';`,
+  // 3: trash, favorites, recently viewed, fragment language, versions, settings, recovery codes.
+  `
+  ALTER TABLE snippets ADD COLUMN deleted_at TEXT;
+  ALTER TABLE snippets ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE snippets ADD COLUMN viewed_at TEXT;
+  ALTER TABLE fragments ADD COLUMN language TEXT;
+
+  CREATE TABLE snippet_versions (
+    id INTEGER PRIMARY KEY,
+    snippet_id INTEGER NOT NULL REFERENCES snippets(id) ON DELETE CASCADE,
+    saved_at TEXT NOT NULL,
+    data TEXT NOT NULL
+  );
+  CREATE INDEX snippet_versions_snippet ON snippet_versions(snippet_id, id);
+
+  CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE recovery_codes (
+    hash TEXT PRIMARY KEY,
+    used_at TEXT
+  );
+  `,
 ];
 
 export type DB = Database.Database;

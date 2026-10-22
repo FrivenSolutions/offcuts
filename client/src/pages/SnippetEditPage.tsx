@@ -1,70 +1,112 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from "react-router";
 import { detectLanguage } from "../../../shared/detect";
 import { LANGUAGES, languageInfo } from "../../../shared/languages";
 import { CodeEditor } from "../components/CodeEditor";
+import { FragmentChecks } from "../components/FragmentChecks";
 import { TagInput } from "../components/TagInput";
-import { api, type Snippet, type SnippetInput, type TagCount } from "../lib/api";
+import { api, type AppSettings, type Snippet, type SnippetInput, type TagCount } from "../lib/api";
 import { browseHref, RESTORE_SCROLL } from "../lib/browseState";
 
 interface DraftFragment {
   key: number;
   title: string;
   comment: string;
+  // "" means "same as the snippet".
+  language: string;
   code: string;
 }
 
+const FORMATTABLE = ["dax", "powerquery"];
+
 let nextKey = 1;
-const newFragment = (title = "", comment = "", code = ""): DraftFragment => ({ key: nextKey++, title, comment, code });
+const newFragment = (title = "", comment = "", code = "", language = ""): DraftFragment => ({
+  key: nextKey++,
+  title,
+  comment,
+  language,
+  code,
+});
 
 export function SnippetEditPage() {
   const { id } = useParams();
   const isNew = id === undefined;
+  const [searchParams] = useSearchParams();
+  // "Duplicate" opens the new-snippet page with ?from=<id>.
+  const copyFrom = isNew ? searchParams.get("from") : null;
+  const sourceId = id ?? copyFrom;
   const navigate = useNavigate();
 
-  const [loaded, setLoaded] = useState(isNew);
+  const [loaded, setLoaded] = useState(!sourceId);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [source, setSource] = useState("");
   const [language, setLanguage] = useState("plaintext");
   // "auto": the app picks the language from the code. "manual": the user picked it.
-  const [languageMode, setLanguageMode] = useState<"auto" | "manual">(isNew ? "auto" : "manual");
+  const [languageMode, setLanguageMode] = useState<"auto" | "manual">(sourceId ? "manual" : "auto");
   const [isPublic, setIsPublic] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [fragments, setFragments] = useState<DraftFragment[]>([newFragment()]);
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [formatting, setFormatting] = useState<number | null>(null);
+  const [formatErrors, setFormatErrors] = useState<Record<number, string>>({});
   const dirty = useRef(false);
 
   useEffect(() => {
     api<TagCount[]>("GET", "/tags")
       .then((t) => setTagSuggestions(t.map((x) => x.tag)))
       .catch(() => undefined);
-    if (isNew) return;
-    api<Snippet>("GET", `/snippets/${id}`)
+    api<AppSettings>("GET", "/settings")
+      .then(setSettings)
+      .catch(() => undefined);
+    if (!sourceId) return;
+    api<Snippet>("GET", `/snippets/${sourceId}`)
       .then((s) => {
-        setTitle(s.title);
+        setTitle(copyFrom ? `${s.title} (copy)` : s.title);
         setDescription(s.description);
         setSource(s.source);
         setLanguage(s.language);
-        setIsPublic(s.isPublic);
+        // A copy starts private, so it does not appear in public by accident.
+        setIsPublic(copyFrom ? false : s.isPublic);
         setTags(s.tags);
-        setFragments(s.fragments.map((f) => newFragment(f.title, f.comment, f.code)));
+        setFragments(s.fragments.map((f) => newFragment(f.title, f.comment, f.code, f.language ?? "")));
         setLoaded(true);
       })
       .catch((e) => setError(e.message));
-  }, [id, isNew]);
+  }, [sourceId, copyFrom]);
 
   // Guess the language while the code changes, until the user picks one.
-  const allCode = useMemo(() => fragments.map((f) => f.code).join("\n\n"), [fragments]);
+  // Fragments with their own language do not count.
+  const allCode = useMemo(
+    () =>
+      fragments
+        .filter((f) => !f.language)
+        .map((f) => f.code)
+        .join("\n\n"),
+    [fragments],
+  );
   useEffect(() => {
     if (languageMode !== "auto") return;
     const t = setTimeout(() => setLanguage(detectLanguage(allCode)), 200);
     return () => clearTimeout(t);
   }, [allCode, languageMode]);
 
-  // Warn before the user leaves with unsaved changes.
+  // Warn before an in-app link leaves the editor with unsaved changes.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty.current && currentLocation.pathname !== nextLocation.pathname);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (confirm("You have unsaved changes. Leave without saving?")) {
+      dirty.current = false;
+      blocker.proceed();
+    } else {
+      blocker.reset();
+    }
+  }, [blocker]);
+
+  // Warn before the browser closes or reloads the tab with unsaved changes.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (dirty.current) e.preventDefault();
@@ -95,6 +137,19 @@ export function SnippetEditPage() {
     });
   }
 
+  async function formatFragment(key: number, lang: string, code: string) {
+    setFormatting(key);
+    setFormatErrors((e) => ({ ...e, [key]: "" }));
+    try {
+      const r = await api<{ code: string }>("POST", "/format", { language: lang, code });
+      updateFragment(key, { code: r.code });
+    } catch (e) {
+      setFormatErrors((errs) => ({ ...errs, [key]: (e as Error).message }));
+    } finally {
+      setFormatting(null);
+    }
+  }
+
   async function save() {
     if (!title.trim()) {
       setError("Give the snippet a title.");
@@ -110,7 +165,7 @@ export function SnippetEditPage() {
       language: languageMode === "auto" ? detectLanguage(allCode) : language,
       isPublic,
       tags,
-      fragments: fragments.map(({ title, comment, code }) => ({ title, comment, code })),
+      fragments: fragments.map(({ title, comment, language: fl, code }) => ({ title, comment, language: fl || null, code })),
     };
     try {
       const saved = isNew ? await api<Snippet>("POST", "/snippets", body) : await api<Snippet>("PUT", `/snippets/${id}`, body);
@@ -141,9 +196,9 @@ export function SnippetEditPage() {
   return (
     <div className="editor">
       <div className="editor-head">
-        <h1>{isNew ? "New snippet" : "Edit snippet"}</h1>
+        <h1>{copyFrom ? "Duplicate snippet" : isNew ? "New snippet" : "Edit snippet"}</h1>
         <div className="snippet-actions">
-          <Link to={isNew ? browseHref() : `/s/${id}`} state={isNew ? RESTORE_SCROLL : undefined} className="btn">
+          <Link to={isNew ? (copyFrom ? `/s/${copyFrom}` : browseHref()) : `/s/${id}`} state={isNew && !copyFrom ? RESTORE_SCROLL : undefined} className="btn">
             Cancel
           </Link>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
@@ -215,7 +270,9 @@ export function SnippetEditPage() {
         Fragments <span className="muted small">({languageInfo(language).label})</span>
       </h2>
 
-      {fragments.map((f, i) => (
+      {fragments.map((f, i) => {
+        const fragLang = f.language || language;
+        return (
         <div key={f.key} className="fragment-edit">
           <div className="fragment-edit-head">
             <input
@@ -224,7 +281,32 @@ export function SnippetEditPage() {
               placeholder={`Fragment title, e.g. “Lookup”`}
               aria-label={`Fragment ${i + 1} title`}
             />
+            <select
+              className="fragment-lang"
+              value={f.language}
+              onChange={(e) => updateFragment(f.key, { language: e.target.value })}
+              aria-label={`Fragment ${i + 1} language`}
+              title="Language for this fragment"
+            >
+              <option value="">Same as snippet ({languageInfo(language).label})</option>
+              {LANGUAGES.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
             <div className="fragment-tools">
+              {settings?.externalFormatters && FORMATTABLE.includes(fragLang) && (
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={formatting !== null || !f.code.trim()}
+                  onClick={() => formatFragment(f.key, fragLang, f.code)}
+                  title="Send this code to the outside formatter service"
+                >
+                  {formatting === f.key ? "Formatting…" : "Format"}
+                </button>
+              )}
               <button type="button" className="btn btn-small" disabled={i === 0} onClick={() => moveFragment(i, -1)} title="Move up">
                 ↑
               </button>
@@ -262,12 +344,15 @@ export function SnippetEditPage() {
           />
           <CodeEditor
             value={f.code}
-            language={language}
+            language={fragLang}
             onChange={(code) => updateFragment(f.key, { code })}
-            placeholder="Paste or type code here"
+            placeholder="Paste or type code here. Use {{Name}} or {{Name:default}} for placeholders."
           />
+          {formatErrors[f.key] && <p className="error small">{formatErrors[f.key]}</p>}
+          <FragmentChecks code={f.code} language={fragLang} />
         </div>
-      ))}
+        );
+      })}
 
       <button
         type="button"

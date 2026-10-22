@@ -2,7 +2,7 @@
 //   npm run cli -- reset-totp
 //   npm run cli -- reset-password <new password>
 //   npm run cli -- reset-all
-import { destroyAllSessions, getUser, hashPassword, newTotpSecret, validatePassword } from "./auth.js";
+import { clearRecoveryCodes, destroyAllSessions, getUser, hashPassword, newTotpSecret, validatePassword } from "./auth.js";
 import { openDatabase } from "./db.js";
 
 const [command, arg] = process.argv.slice(2);
@@ -14,6 +14,7 @@ async function main(): Promise<number> {
     case "reset-totp":
       if (!user) return fail("No account exists yet.");
       db.prepare("UPDATE user SET totp_secret = ?, totp_enabled = 0, totp_last_step = 0 WHERE id = 1").run(newTotpSecret());
+      clearRecoveryCodes(db);
       destroyAllSessions(db);
       console.log("Two-factor login is reset. Log in with your password to scan a new QR code.");
       return 0;
@@ -28,6 +29,7 @@ async function main(): Promise<number> {
     }
     case "reset-all":
       db.prepare("DELETE FROM user").run();
+      clearRecoveryCodes(db);
       destroyAllSessions(db);
       console.log("The account is removed. Snippets are kept. Restart the server to get a new setup code.");
       return 0;

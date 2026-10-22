@@ -23,6 +23,9 @@ export function Header() {
           <ThemeToggle />
           {authed ? (
             <>
+              <Link to="/trash" className="btn btn-ghost" title="Trash">
+                Trash
+              </Link>
               <Link to="/settings" className="btn btn-ghost" title="Settings">
                 Settings
               </Link>

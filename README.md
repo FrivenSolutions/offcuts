@@ -15,6 +15,20 @@ Offcuts is a self-hosted code snippet manager. One person owns it. Visitors can 
 - **Two-factor login.** Password plus a TOTP code from an authenticator app. (TOTP = time-based one-time password, the 6-digit code that changes every 30 seconds.)
 - **Light and dark themes**, and a layout that works on a phone.
 - **Import and export** as JSON.
+- **Placeholders.** Write `{{Name}}` or `{{Name:default}}` in code. Copy then asks for the values and copies the finished code.
+- **Per-fragment language.** A fragment can override the snippet's language, for example a Power Automate body next to a Power Fx formula.
+- **Favorites, Duplicate, Recently viewed, Word wrap, Download** for each fragment.
+- **Code checks** in the editor: unmatched brackets, unclosed strings, `let` without `in` (Power Query), `VAR` without `RETURN` (DAX), invalid JSON. They warn only.
+- **Format button** for DAX and Power Query M, through outside services. Off until you turn it on in Settings.
+- **Keyboard shortcuts.** Press `?` to see them.
+
+## Safety features
+
+- **Trash.** Delete moves a snippet to the Trash. It stays there for 30 days, then the app removes it.
+- **Version history.** Each save keeps the old content (up to 50 versions per snippet). The History page shows the changes and restores a version.
+- **Unsaved-changes warning.** The editor warns you before you leave with unsaved edits.
+- **Automatic backups.** Once a day, the app copies the database to the `backups` folder in the data folder and keeps the newest 14. Settings → Backups also has "Back up now" and download links. These backups are on the same disk, so also back up the container or volume.
+- **Recovery codes.** Setup gives 10 one-time codes. Each code replaces the authenticator code once. Make new codes in Settings.
 - **One SQLite database file.** Back up one file to back up everything.
 
 ## Install with Docker
@@ -103,10 +117,13 @@ Set these as environment variables. Docker: in `docker-compose.yml`. LXC: in `/e
 | `COOKIE_SECURE` | `auto` | `auto`, `true` or `false` |
 | `SESSION_DAYS` | `30` | How long a login lasts |
 | `APP_NAME` | `Offcuts` | Name shown in the authenticator app |
+| `BACKUP_KEEP` | `14` | Number of automatic daily backups to keep. `0` turns them off. |
+| `DAX_FORMATTER_URL` | DAX Formatter API | Address of the DAX formatter service |
+| `PQ_FORMATTER_URL` | Power Query Formatter API | Address of the Power Query formatter service |
 
 ## Recovery
 
-If you lose your phone, reset two-factor login. Then log in with your password and scan a new QR code.
+If you lose your phone, log in with a recovery code: on the login page, click "Use a recovery code". If you have no codes left, reset two-factor login. Then log in with your password and scan a new QR code.
 
 ```bash
 docker exec offcuts npm run cli -- reset-totp    # Docker

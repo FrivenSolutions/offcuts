@@ -268,22 +268,28 @@ describe("fragment comments", () => {
 });
 
 describe("database upgrade", () => {
-  it("adds the comment column to an existing database and keeps its data", async () => {
+  it("upgrades a version 1 database and keeps its data", async () => {
     const fs = await import("node:fs");
     const os = await import("node:os");
     const path = await import("node:path");
+    const Database = (await import("better-sqlite3")).default;
+    const { MIGRATIONS } = await import("./db.js");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "offcuts-"));
     const file = path.join(dir, "old.db");
-    // Make a database that looks like version 1.
-    let old = openDatabase(file);
-    old.exec("ALTER TABLE fragments DROP COLUMN comment; PRAGMA user_version = 1;");
+    // Build a database exactly as version 1 made it.
+    const old = new Database(file);
+    old.exec(MIGRATIONS[0]!);
+    old.pragma("user_version = 1");
     old.prepare("INSERT INTO snippets (id, title, language) VALUES (1, 'Old', 'sql')").run();
     old.prepare("INSERT INTO fragments (snippet_id, position, title, code) VALUES (1, 0, 'Q', 'SELECT 1')").run();
     old.close();
 
     const upgraded = openDatabase(file);
-    expect(upgraded.pragma("user_version", { simple: true })).toBe(2);
-    expect(upgraded.prepare("SELECT title, comment, code FROM fragments").get()).toEqual({ title: "Q", comment: "", code: "SELECT 1" });
+    expect(upgraded.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
+    expect(upgraded.prepare("SELECT title, comment, language, code FROM fragments").get()).toEqual({
+      title: "Q", comment: "", language: null, code: "SELECT 1",
+    });
+    expect(upgraded.prepare("SELECT title, deleted_at, favorite FROM snippets").get()).toEqual({ title: "Old", deleted_at: null, favorite: 0 });
     upgraded.close();
     fs.rmSync(dir, { recursive: true });
   });

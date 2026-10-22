@@ -210,3 +210,46 @@ export function recordFailure(req: Request): void {
 export function clearFailures(req: Request): void {
   fails.delete(`ip:${req.ip}`);
 }
+
+// ---------- Recovery codes ----------
+
+// No 0/o, 1/l/i, so codes are easy to read and type.
+const RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+const RECOVERY_COUNT = 10;
+
+function normalizeRecoveryCode(code: string): string {
+  return code.toLowerCase().replace(/[\s-]/g, "");
+}
+
+/** Replaces all recovery codes with 10 new ones. Returns the codes in plain text, once. */
+export function newRecoveryCodes(db: DB): string[] {
+  const codes = Array.from({ length: RECOVERY_COUNT }, () => {
+    const chars = Array.from({ length: 8 }, () => RECOVERY_ALPHABET[crypto.randomInt(RECOVERY_ALPHABET.length)]);
+    return `${chars.slice(0, 4).join("")}-${chars.slice(4).join("")}`;
+  });
+  db.transaction(() => {
+    db.prepare("DELETE FROM recovery_codes").run();
+    const add = db.prepare("INSERT INTO recovery_codes (hash) VALUES (?)");
+    for (const c of codes) add.run(hashToken(normalizeRecoveryCode(c)));
+  })();
+  return codes;
+}
+
+/** Uses up a recovery code. Returns true when the code was valid and not used before. */
+export function useRecoveryCode(db: DB, code: unknown): boolean {
+  if (typeof code !== "string") return false;
+  const normal = normalizeRecoveryCode(code);
+  if (!/^[a-z0-9]{8}$/.test(normal)) return false;
+  const info = db
+    .prepare("UPDATE recovery_codes SET used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE hash = ? AND used_at IS NULL")
+    .run(hashToken(normal));
+  return info.changes === 1;
+}
+
+export function remainingRecoveryCodes(db: DB): number {
+  return (db.prepare("SELECT COUNT(*) AS n FROM recovery_codes WHERE used_at IS NULL").get() as { n: number }).n;
+}
+
+export function clearRecoveryCodes(db: DB): void {
+  db.prepare("DELETE FROM recovery_codes").run();
+}

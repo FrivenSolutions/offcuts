@@ -1,13 +1,16 @@
 import { useEffect, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { Header } from "./components/Header";
+import { Shortcuts } from "./components/Shortcuts";
 import { useAuth } from "./lib/auth";
 import { BrowsePage } from "./pages/BrowsePage";
 import { LoginPage } from "./pages/LoginPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
+import { HistoryPage } from "./pages/HistoryPage";
 import { SnippetEditPage } from "./pages/SnippetEditPage";
 import { SnippetViewPage } from "./pages/SnippetViewPage";
+import { TrashPage } from "./pages/TrashPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { authed } = useAuth();
@@ -33,6 +36,7 @@ export function App() {
   return (
     <>
       <Header />
+      <Shortcuts />
       <main className="container">
         <Routes>
           <Route path="/" element={<BrowsePage />} />
@@ -41,6 +45,8 @@ export function App() {
           <Route path="/setup" element={inSetup ? <SetupPage /> : <Navigate to="/" replace />} />
           <Route path="/new" element={<RequireAuth><SnippetEditPage /></RequireAuth>} />
           <Route path="/s/:id/edit" element={<RequireAuth><SnippetEditPage /></RequireAuth>} />
+          <Route path="/s/:id/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
+          <Route path="/trash" element={<RequireAuth><TrashPage /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

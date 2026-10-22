@@ -2,6 +2,8 @@ export interface Fragment {
   id?: number;
   title: string;
   comment: string;
+  // A language for this fragment only. null means "same as the snippet".
+  language?: string | null;
   code: string;
 }
 
@@ -15,10 +17,14 @@ interface SnippetBase {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  favorite: boolean;
+  viewedAt: string | null;
+  deletedAt: string | null;
 }
 
 export interface SnippetSummary extends SnippetBase {
   fragmentTitles: string[];
+  previewLanguage: string;
   preview: string;
   previewTruncated: boolean;
 }
@@ -73,4 +79,8 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
 /** Shows a URL as a link. Shows other text as plain text. */
 export function isUrl(value: string): boolean {
   return /^https?:\/\/\S+$/i.test(value.trim());
+}
+
+export interface AppSettings {
+  externalFormatters: boolean;
 }

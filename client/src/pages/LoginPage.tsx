@@ -11,10 +11,34 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [useRecovery, setUseRecovery] = useState(false);
+  // Set after a login with a recovery code, to tell the user how many are left.
+  const [recoveryLeft, setRecoveryLeft] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const from = (location.state as { from?: string } | null)?.from ?? "/";
+  if (recoveryLeft !== null) {
+    return (
+      <div className="auth-box">
+        <h1>Logged in with a recovery code</h1>
+        <p>
+          That code is now used up. You have {recoveryLeft} recovery code{recoveryLeft === 1 ? "" : "s"} left.
+        </p>
+        <p>If you lost your phone, reset two-factor login with the command in Settings, then make new recovery codes.</p>
+        <button
+          className="btn btn-primary btn-block"
+          onClick={async () => {
+            await refresh();
+            navigate(from, { replace: true });
+          }}
+        >
+          Continue
+        </button>
+      </div>
+    );
+  }
+
   if (authed) return <Navigate to={from} replace />;
 
   async function submitPassword(e: FormEvent) {
@@ -42,7 +66,11 @@ export function LoginPage() {
     setBusy(true);
     setError("");
     try {
-      await api("POST", "/auth/totp", { code });
+      const r = await api<{ usedRecoveryCode?: boolean; remaining?: number }>("POST", "/auth/totp", { code });
+      if (r.usedRecoveryCode) {
+        setRecoveryLeft(r.remaining ?? 0);
+        return;
+      }
       await refresh();
       navigate(from, { replace: true });
     } catch (err) {
@@ -80,21 +108,56 @@ export function LoginPage() {
         </form>
       ) : (
         <form onSubmit={submitCode}>
-          <p>Enter the 6-digit code from your authenticator app.</p>
-          <label className="field">
-            <span>Code</span>
-            <input
-              className="otp"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              required
-            />
-          </label>
-          <button className="btn btn-primary btn-block" disabled={busy || code.length !== 6}>
+          {useRecovery ? (
+            <>
+              <p>Enter one of your recovery codes. Each code works once.</p>
+              <label className="field">
+                <span>Recovery code</span>
+                <input
+                  key="recovery"
+                  className="otp"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.slice(0, 9))}
+                  placeholder="xxxx-xxxx"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  autoFocus
+                  required
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <p>Enter the 6-digit code from your authenticator app.</p>
+              <label className="field">
+                <span>Code</span>
+                <input
+                  key="totp"
+                  className="otp"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  required
+                />
+              </label>
+            </>
+          )}
+          <button className="btn btn-primary btn-block" disabled={busy || (useRecovery ? code.replace(/[\s-]/g, "").length !== 8 : code.length !== 6)}>
             Log in
+          </button>
+          <button
+            type="button"
+            className="link-button switch-code"
+            onClick={() => {
+              setUseRecovery(!useRecovery);
+              setCode("");
+              setError("");
+            }}
+          >
+            {useRecovery ? "Use the authenticator code" : "Lost your phone? Use a recovery code"}
           </button>
         </form>
       )}

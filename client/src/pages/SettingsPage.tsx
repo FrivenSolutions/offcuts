@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ImportPanel } from "../components/ImportPanel";
+import { BackupPanel, FormatterPanel, RecoveryPanel, TagsPanel } from "../components/SettingsPanels";
+import { Link } from "react-router";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -35,7 +37,10 @@ export function SettingsPage() {
   return (
     <div className="settings">
       <h1>Settings</h1>
-      <p className="muted">Logged in as {status?.username}.</p>
+      <p className="muted">
+        Logged in as {status?.username}. Deleted snippets are in the <Link to="/trash">Trash</Link>. Press <kbd>?</kbd> for
+        keyboard shortcuts.
+      </p>
 
       <section className="panel">
         <h2>Change password</h2>
@@ -70,21 +75,29 @@ export function SettingsPage() {
       </section>
 
       <section className="panel">
-        <h2>Backup</h2>
+        <h2>Export</h2>
         <p>Download all snippets as one JSON file.</p>
         <a className="btn" href="/api/export" download>
           Export snippets
         </a>
-        <p className="muted small">
-          For a full backup, copy the <code>offcuts.db</code> file from the data folder.
-        </p>
       </section>
+
+      <BackupPanel />
 
       <ImportPanel />
 
+      <TagsPanel />
+
+      <FormatterPanel />
+
+      <RecoveryPanel />
+
       <section className="panel">
         <h2>Lost your phone?</h2>
-        <p>Run this command on the server to reset two-factor login. Then log in with your password and scan a new QR code.</p>
+        <p>
+          First, use a recovery code: on the login page, click “Use a recovery code”. If you have no codes left, run this
+          command on the server to reset two-factor login. Then log in with your password and scan a new QR code.
+        </p>
         <pre className="hint-block">docker exec offcuts npm run cli -- reset-totp{"\n"}# or, in the LXC:{"\n"}offcuts-cli reset-totp</pre>
       </section>
     </div>

@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { loadAuth } from "./auth.js";
 import { config } from "./config.js";
 import type { DB } from "./db.js";
+import { adminRoutes } from "./routes/admin.js";
 import { authRoutes } from "./routes/auth.js";
 import { snippetRoutes } from "./routes/snippets.js";
 
@@ -49,6 +50,7 @@ export function createApp(db: DB) {
   app.use("/api", loadAuth(db));
   app.use("/api/auth", authRoutes(db));
   app.use("/api", snippetRoutes(db));
+  app.use("/api", adminRoutes(db));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found." });

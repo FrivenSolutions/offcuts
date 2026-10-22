@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
+import { RecoveryCodeList } from "../components/RecoveryCodeList";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -18,6 +19,8 @@ export function SetupPage() {
   const [confirmPw, setConfirmPw] = useState("");
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [code, setCode] = useState("");
+  // Set after enrollment. The page shows the codes once before it opens the app.
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -50,15 +53,32 @@ export function SetupPage() {
     setBusy(true);
     setError("");
     try {
-      await api("POST", "/auth/enroll", { code });
-      await refresh();
-      navigate("/", { replace: true });
+      const r = await api<{ recoveryCodes: string[] }>("POST", "/auth/enroll", { code });
+      setRecoveryCodes(r.recoveryCodes);
     } catch (err) {
       setError((err as Error).message);
       setCode("");
     } finally {
       setBusy(false);
     }
+  }
+
+  if (recoveryCodes) {
+    return (
+      <div className="auth-box wide">
+        <h1>Two-factor login is on</h1>
+        <RecoveryCodeList codes={recoveryCodes} />
+        <button
+          className="btn btn-primary btn-block"
+          onClick={async () => {
+            await refresh();
+            navigate("/", { replace: true });
+          }}
+        >
+          I saved my codes. Open Offcuts
+        </button>
+      </div>
+    );
   }
 
   if (enrolling) {

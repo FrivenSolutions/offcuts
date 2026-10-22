@@ -4,6 +4,9 @@ import QRCode from "qrcode";
 import {
   checkTotp,
   clearFailures,
+  newRecoveryCodes,
+  remainingRecoveryCodes,
+  useRecoveryCode,
   createSession,
   destroyAllSessions,
   destroySession,
@@ -117,7 +120,7 @@ export function authRoutes(db: DB): Router {
     }
     db.prepare("UPDATE user SET totp_enabled = 1 WHERE id = 1").run();
     upgradeSession(db, req, res, "full");
-    res.json({ ok: true });
+    res.json({ ok: true, recoveryCodes: newRecoveryCodes(db) });
   });
 
   r.post("/login", async (req, res) => {
@@ -153,19 +156,36 @@ export function authRoutes(db: DB): Router {
       res.status(403).json({ error: "Log in with your password first." });
       return;
     }
-    if (!checkTotp(db, req.body?.code)) {
+    // A 6-digit code is a TOTP code. Anything else is tried as a recovery code.
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    const isTotp = /^\d{6}$/.test(code.replace(/\s/g, ""));
+    const ok = isTotp ? checkTotp(db, code) : useRecoveryCode(db, code);
+    if (!ok) {
       recordFailure(req);
-      res.status(401).json({ error: "The code is not correct." });
+      res.status(401).json({ error: isTotp ? "The code is not correct." : "The recovery code is not correct or was already used." });
       return;
     }
     clearFailures(req);
     upgradeSession(db, req, res, "full");
-    res.json({ ok: true });
+    res.json(isTotp ? { ok: true } : { ok: true, usedRecoveryCode: true, remaining: remainingRecoveryCodes(db) });
   });
 
   r.post("/logout", (req, res) => {
     destroySession(db, req, res);
     res.json({ ok: true });
+  });
+
+  r.get("/recovery", requireAuth, (_req, res) => {
+    res.json({ remaining: remainingRecoveryCodes(db) });
+  });
+
+  // Makes new recovery codes. The old ones stop working.
+  r.post("/recovery", requireAuth, (req, res) => {
+    if (!checkTotp(db, req.body?.code)) {
+      res.status(400).json({ error: "The authenticator code is not correct." });
+      return;
+    }
+    res.json({ recoveryCodes: newRecoveryCodes(db) });
   });
 
   r.post("/password", requireAuth, async (req, res) => {

@@ -5,17 +5,20 @@ interface Props {
   code: string;
   language: string;
   lineNumbers?: boolean;
+  // Wrap long lines. Line numbers are hidden then, because a wrapped line takes several rows.
+  wrap?: boolean;
   className?: string;
 }
 
-export function CodeBlock({ code, language, lineNumbers = false, className = "" }: Props) {
+export function CodeBlock({ code, language, lineNumbers = false, wrap = false, className = "" }: Props) {
+  const showNumbers = lineNumbers && !wrap;
   // highlight.js escapes the code, so this HTML is safe to insert.
   const html = useMemo(() => highlight(code, language), [code, language]);
-  const lines = useMemo(() => (lineNumbers ? code.split("\n").length : 0), [code, lineNumbers]);
+  const lines = useMemo(() => (showNumbers ? code.split("\n").length : 0), [code, showNumbers]);
 
   return (
-    <div className={`code-block ${className}`}>
-      {lineNumbers && (
+    <div className={`code-block ${wrap ? "wrap" : ""} ${className}`}>
+      {showNumbers && (
         <pre className="line-numbers" aria-hidden="true">
           {Array.from({ length: lines }, (_, i) => i + 1).join("\n")}
         </pre>

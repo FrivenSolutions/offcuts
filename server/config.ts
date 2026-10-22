@@ -19,4 +19,6 @@ export const config = {
   cookieSecure: (process.env.COOKIE_SECURE ?? "auto") as "auto" | "true" | "false",
   sessionDays: Number(process.env.SESSION_DAYS ?? 30),
   appName: process.env.APP_NAME ?? "Offcuts",
+  // How many automatic backups to keep. 0 turns automatic backups off.
+  backupKeep: Number(process.env.BACKUP_KEEP ?? 14),
 };

@@ -3,20 +3,25 @@ import { Link, useLocation, useNavigationType, useSearchParams } from "react-rou
 import { LANGUAGES } from "../../../shared/languages";
 import { LanguageBadge, TagList, VisibilityBadge } from "../components/Badges";
 import { CodeBlock } from "../components/CodeBlock";
+import { SEARCH_ID } from "../components/Shortcuts";
+import { StarButton } from "../components/StarButton";
 import { api, type SnippetSummary, type TagCount } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { readBrowseScroll, rememberBrowse, saveBrowseScroll } from "../lib/browseState";
 
 type View = "cards" | "list";
 
-const SORT_OPTIONS = [
+const SORT_OPTIONS: { value: string; label: string; authOnly?: boolean }[] = [
   { value: "title", label: "Title A–Z" },
   { value: "-title", label: "Title Z–A" },
   { value: "-updated", label: "Recently updated" },
   { value: "updated", label: "Oldest updated" },
   { value: "-created", label: "Newest" },
   { value: "created", label: "Oldest" },
+  { value: "-viewed", label: "Recently viewed", authOnly: true },
 ];
+
+const RECENT_COUNT = 5;
 
 function readView(): View {
   try {
@@ -57,6 +62,7 @@ export function BrowsePage() {
   const language = params.get("language") ?? "";
   const sort = params.get("sort") ?? "title";
   const visibility = params.get("visibility") ?? "";
+  const starred = params.get("starred") === "1";
   const activeTags = useMemo(() => (params.get("tags") ?? "").split(",").filter(Boolean), [params]);
 
   function setParam(key: string, value: string) {
@@ -121,6 +127,7 @@ export function BrowsePage() {
     if (language) query.set("language", language);
     if (sort) query.set("sort", sort);
     if (visibility) query.set("visibility", visibility);
+    if (starred) query.set("starred", "1");
     if (activeTags.length) query.set("tags", activeTags.join(","));
     let cancelled = false;
     api<SnippetSummary[]>("GET", `/snippets?${query}`)
@@ -129,13 +136,25 @@ export function BrowsePage() {
     return () => {
       cancelled = true;
     };
-  }, [q, language, sort, visibility, activeTags, authed]);
+  }, [q, language, sort, visibility, starred, activeTags, authed]);
 
   useEffect(() => {
     api<TagCount[]>("GET", "/tags").then(setTags).catch(() => setTags([]));
   }, [authed]);
 
-  const filtering = q || language || visibility || activeTags.length > 0;
+  const filtering = q || language || visibility || starred || activeTags.length > 0;
+
+  // The snippets the owner opened last. Shown only on the unfiltered list.
+  const recent = useMemo(
+    () =>
+      authed && !filtering && snippets
+        ? snippets
+            .filter((s) => s.viewedAt)
+            .sort((a, b) => b.viewedAt!.localeCompare(a.viewedAt!))
+            .slice(0, RECENT_COUNT)
+        : [],
+    [authed, filtering, snippets],
+  );
 
   return (
     <div className="browse">
@@ -147,9 +166,11 @@ export function BrowsePage() {
 
       <div className="toolbar">
         <input
+          id={SEARCH_ID}
           className="search"
           type="search"
-          placeholder="Search titles, fragments, code and tags…"
+          placeholder="Search titles, code and tags…"
+          title="Search titles, fragment titles, comments, code and tags. Press / to jump here."
           value={searchDraft}
           onChange={(e) => setSearchDraft(e.target.value)}
           aria-label="Search"
@@ -169,8 +190,18 @@ export function BrowsePage() {
             <option value="private">Private only</option>
           </select>
         )}
+        {authed && (
+          <button
+            className={`btn ${starred ? "btn-active" : ""}`}
+            aria-pressed={starred}
+            onClick={() => setParam("starred", starred ? "" : "1")}
+            title="Show only starred snippets"
+          >
+            {starred ? "★" : "☆"} Starred
+          </button>
+        )}
         <select value={sort} onChange={(e) => setParam("sort", e.target.value)} aria-label="Sort">
-          {SORT_OPTIONS.map((o) => (
+          {SORT_OPTIONS.filter((o) => authed || !o.authOnly).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -201,6 +232,17 @@ export function BrowsePage() {
       )}
 
       {error && <p className="error">{error}</p>}
+
+      {recent.length > 0 && (
+        <nav className="recent" aria-label="Recently viewed">
+          <span className="muted small">Recently viewed:</span>
+          {recent.map((s) => (
+            <Link key={s.id} to={`/s/${s.id}`}>
+              {s.title}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       {snippets && (
         <p className="result-count">
@@ -239,7 +281,12 @@ export function BrowsePage() {
             <Link key={s.id} to={`/s/${s.id}`} className="card">
               <div className="card-head">
                 <h3>{s.title}</h3>
-                {authed && <VisibilityBadge isPublic={s.isPublic} />}
+                {authed && (
+                  <span className="card-flags">
+                    <VisibilityBadge isPublic={s.isPublic} />
+                    <StarButton id={s.id} favorite={s.favorite} />
+                  </span>
+                )}
               </div>
               <div className="meta-row">
                 <LanguageBadge language={s.language} />
@@ -251,7 +298,7 @@ export function BrowsePage() {
                 <div className="fragment-names">{s.fragmentTitles.filter(Boolean).join(" · ")}</div>
               )}
               <div className={`preview ${s.previewTruncated ? "truncated" : ""}`}>
-                <CodeBlock code={s.preview} language={s.language} />
+                <CodeBlock code={s.preview} language={s.previewLanguage} />
               </div>
               <div className="card-foot">
                 <TagList tags={s.tags} active={activeTags} onTagClick={toggleTag} />
@@ -268,13 +315,14 @@ export function BrowsePage() {
             <Link key={s.id} to={`/s/${s.id}`} className="list-row">
               <div className="list-main">
                 <div className="list-title">
+                  {authed && <StarButton id={s.id} favorite={s.favorite} />}
                   <strong>{s.title}</strong>
                   {s.fragmentTitles.some(Boolean) && (
                     <span className="fragment-names">{s.fragmentTitles.filter(Boolean).join(" · ")}</span>
                   )}
                 </div>
                 <div className="list-preview">
-                  <CodeBlock code={s.preview.split("\n").slice(0, 3).join("\n")} language={s.language} />
+                  <CodeBlock code={s.preview.split("\n").slice(0, 3).join("\n")} language={s.previewLanguage} />
                 </div>
               </div>
               <div className="list-meta">
