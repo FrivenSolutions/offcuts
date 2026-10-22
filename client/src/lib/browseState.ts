@@ -24,3 +24,31 @@ export function browseHref(): string {
     return last;
   }
 }
+
+// ---------- Scroll position ----------
+
+const SCROLL_KEY = "offcuts-browse-scroll";
+let lastScroll: { search: string; y: number } | null = null;
+
+/** Pass as Link state to return to the saved scroll position. */
+export const RESTORE_SCROLL = { restoreScroll: true };
+
+export function saveBrowseScroll(search: string, y: number): void {
+  lastScroll = { search, y };
+  try {
+    sessionStorage.setItem(SCROLL_KEY, JSON.stringify(lastScroll));
+  } catch {
+    // Storage can be blocked. The value in memory still works until a reload.
+  }
+}
+
+/** Returns the saved scroll position when it belongs to the same filters. */
+export function readBrowseScroll(search: string): number | null {
+  let saved = lastScroll;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(SCROLL_KEY) ?? "null") ?? lastScroll;
+  } catch {
+    // Use the value in memory.
+  }
+  return saved && saved.search === search && typeof saved.y === "number" ? saved.y : null;
+}

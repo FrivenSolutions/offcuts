@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigationType, useSearchParams } from "react-router";
 import { LANGUAGES } from "../../../shared/languages";
 import { LanguageBadge, TagList, VisibilityBadge } from "../components/Badges";
 import { CodeBlock } from "../components/CodeBlock";
 import { api, type SnippetSummary, type TagCount } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { rememberBrowse } from "../lib/browseState";
+import { readBrowseScroll, rememberBrowse, saveBrowseScroll } from "../lib/browseState";
 
 type View = "cards" | "list";
 
@@ -35,9 +35,23 @@ export function BrowsePage() {
   const [params, setParams] = useSearchParams();
   const [view, setView] = useState<View>(readView);
   const [snippets, setSnippets] = useState<SnippetSummary[] | null>(null);
-  const [tags, setTags] = useState<TagCount[]>([]);
+  // null while the tags load.
+  const [tags, setTags] = useState<TagCount[] | null>(null);
   const [error, setError] = useState("");
   const [searchDraft, setSearchDraft] = useState(params.get("q") ?? "");
+  const location = useLocation();
+  const navigationType = useNavigationType();
+
+  // Read the saved position once, before this page's own scroll events change it.
+  // Restore it only on Back, or on a link that asks for it ("All snippets", Cancel, Delete).
+  const [restoreY] = useState(() =>
+    navigationType === "POP" || (location.state as { restoreScroll?: boolean } | null)?.restoreScroll
+      ? readBrowseScroll(params.toString())
+      : null,
+  );
+  const restored = useRef(false);
+  const searchKey = useRef(params.toString());
+  searchKey.current = params.toString();
 
   const q = params.get("q") ?? "";
   const language = params.get("language") ?? "";
@@ -61,6 +75,28 @@ export function BrowsePage() {
   useEffect(() => {
     rememberBrowse(params.toString());
   }, [params]);
+
+  // Remember the scroll position while the user scrolls.
+  useEffect(() => {
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => saveBrowseScroll(searchKey.current, window.scrollY));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  // Go back to the saved position once the list has loaded and has its full height.
+  useEffect(() => {
+    // The tag bar sits above the list, so wait for it too.
+    if (!snippets || !tags || restored.current) return;
+    restored.current = true;
+    if (restoreY) window.scrollTo(0, restoreY);
+  }, [snippets, tags, restoreY]);
 
   // Wait until typing stops before searching.
   useEffect(() => {
@@ -150,7 +186,7 @@ export function BrowsePage() {
         </div>
       </div>
 
-      {tags.length > 0 && (
+      {tags && tags.length > 0 && (
         <div className="tag-bar">
           {tags.map((t) => (
             <button

@@ -6,7 +6,7 @@ import { CopyButton } from "../components/CopyButton";
 import { LinkedText } from "../components/LinkedText";
 import { api, isUrl, type Snippet } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { browseHref } from "../lib/browseState";
+import { browseHref, RESTORE_SCROLL } from "../lib/browseState";
 
 export function SnippetViewPage() {
   const { id } = useParams();
@@ -26,7 +26,9 @@ export function SnippetViewPage() {
     return (
       <div className="empty">
         <p>{error}</p>
-        <Link to={browseHref()}>Back to all snippets</Link>
+        <Link to={browseHref()} state={RESTORE_SCROLL}>
+          Back to all snippets
+        </Link>
       </div>
     );
   if (!snippet) return <div className="page-loading">Loading…</div>;
@@ -34,7 +36,7 @@ export function SnippetViewPage() {
   async function remove() {
     if (!confirm(`Delete "${snippet!.title}"? You cannot undo this.`)) return;
     await api("DELETE", `/snippets/${snippet!.id}`);
-    navigate(browseHref());
+    navigate(browseHref(), { state: RESTORE_SCROLL });
   }
 
   const allCode = snippet.fragments.map((f) => f.code).join("\n\n");
@@ -43,7 +45,7 @@ export function SnippetViewPage() {
     <article className="snippet-view">
       <div className="snippet-head">
         <div>
-          <Link to={browseHref()} className="back">
+          <Link to={browseHref()} state={RESTORE_SCROLL} className="back">
             ← All snippets
           </Link>
           <h1>{snippet.title}</h1>

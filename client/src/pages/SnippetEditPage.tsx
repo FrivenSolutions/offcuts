@@ -5,7 +5,7 @@ import { LANGUAGES, languageInfo } from "../../../shared/languages";
 import { CodeEditor } from "../components/CodeEditor";
 import { TagInput } from "../components/TagInput";
 import { api, type Snippet, type SnippetInput, type TagCount } from "../lib/api";
-import { browseHref } from "../lib/browseState";
+import { browseHref, RESTORE_SCROLL } from "../lib/browseState";
 
 interface DraftFragment {
   key: number;
@@ -143,7 +143,7 @@ export function SnippetEditPage() {
       <div className="editor-head">
         <h1>{isNew ? "New snippet" : "Edit snippet"}</h1>
         <div className="snippet-actions">
-          <Link to={isNew ? browseHref() : `/s/${id}`} className="btn">
+          <Link to={isNew ? browseHref() : `/s/${id}`} state={isNew ? RESTORE_SCROLL : undefined} className="btn">
             Cancel
           </Link>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
