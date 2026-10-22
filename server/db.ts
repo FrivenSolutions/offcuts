@@ -48,6 +48,8 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX snippet_tags_tag ON snippet_tags(tag);
   `,
+  // 2: a comment on each fragment.
+  `ALTER TABLE fragments ADD COLUMN comment TEXT NOT NULL DEFAULT '';`,
 ];
 
 export type DB = Database.Database;

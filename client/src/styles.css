@@ -727,6 +727,20 @@ button.tag:hover {
   outline: none !important;
   border: none !important;
 }
+.fragment-comment-input {
+  width: 100%;
+  margin-bottom: 8px;
+  resize: vertical;
+}
+.fragment-comment {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .add-fragment {
   width: 100%;
   justify-content: center;

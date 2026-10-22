@@ -240,3 +240,51 @@ describe("import", () => {
     expect((await api("GET", "/api/snippets")).body.length).toBe(before * 2);
   });
 });
+
+describe("fragment comments", () => {
+  it("saves, returns and searches comments", async () => {
+    const r = await api("POST", "/api/snippets", {
+      title: "Commented",
+      language: "powerfx",
+      fragments: [
+        { title: "Lookup", comment: "Use the ID column.\nSee https://example.com/docs", code: "LookUp(Items, ID = 1)" },
+        { title: "Choice", code: "{ Value: \"Open\" }" },
+      ],
+    });
+    expect(r.status).toBe(201);
+    expect(r.body.fragments.map((f: { comment: string }) => f.comment)).toEqual(["Use the ID column.\nSee https://example.com/docs", ""]);
+    const found = (await api("GET", "/api/snippets?q=column.")).body as { title: string }[];
+    expect(found.map((s) => s.title)).toEqual(["Commented"]);
+  });
+
+  it("rejects a comment that is too long", async () => {
+    const r = await api("POST", "/api/snippets", {
+      title: "Too long",
+      language: "sql",
+      fragments: [{ comment: "x".repeat(5001), code: "" }],
+    });
+    expect(r.status).toBe(400);
+  });
+});
+
+describe("database upgrade", () => {
+  it("adds the comment column to an existing database and keeps its data", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "offcuts-"));
+    const file = path.join(dir, "old.db");
+    // Make a database that looks like version 1.
+    let old = openDatabase(file);
+    old.exec("ALTER TABLE fragments DROP COLUMN comment; PRAGMA user_version = 1;");
+    old.prepare("INSERT INTO snippets (id, title, language) VALUES (1, 'Old', 'sql')").run();
+    old.prepare("INSERT INTO fragments (snippet_id, position, title, code) VALUES (1, 0, 'Q', 'SELECT 1')").run();
+    old.close();
+
+    const upgraded = openDatabase(file);
+    expect(upgraded.pragma("user_version", { simple: true })).toBe(2);
+    expect(upgraded.prepare("SELECT title, comment, code FROM fragments").get()).toEqual({ title: "Q", comment: "", code: "SELECT 1" });
+    upgraded.close();
+    fs.rmSync(dir, { recursive: true });
+  });
+});

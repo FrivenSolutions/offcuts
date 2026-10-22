@@ -10,11 +10,12 @@ import { browseHref } from "../lib/browseState";
 interface DraftFragment {
   key: number;
   title: string;
+  comment: string;
   code: string;
 }
 
 let nextKey = 1;
-const newFragment = (title = "", code = ""): DraftFragment => ({ key: nextKey++, title, code });
+const newFragment = (title = "", comment = "", code = ""): DraftFragment => ({ key: nextKey++, title, comment, code });
 
 export function SnippetEditPage() {
   const { id } = useParams();
@@ -49,7 +50,7 @@ export function SnippetEditPage() {
         setLanguage(s.language);
         setIsPublic(s.isPublic);
         setTags(s.tags);
-        setFragments(s.fragments.map((f) => newFragment(f.title, f.code)));
+        setFragments(s.fragments.map((f) => newFragment(f.title, f.comment, f.code)));
         setLoaded(true);
       })
       .catch((e) => setError(e.message));
@@ -105,10 +106,11 @@ export function SnippetEditPage() {
       title,
       description,
       source,
-      language,
+      // The delayed detection may not have run yet if the user saves right after a paste.
+      language: languageMode === "auto" ? detectLanguage(allCode) : language,
       isPublic,
       tags,
-      fragments: fragments.map(({ title, code }) => ({ title, code })),
+      fragments: fragments.map(({ title, comment, code }) => ({ title, comment, code })),
     };
     try {
       const saved = isNew ? await api<Snippet>("POST", "/snippets", body) : await api<Snippet>("PUT", `/snippets/${id}`, body);
@@ -250,6 +252,14 @@ export function SnippetEditPage() {
               </button>
             </div>
           </div>
+          <textarea
+            className="fragment-comment-input"
+            rows={2}
+            value={f.comment}
+            onChange={(e) => updateFragment(f.key, { comment: e.target.value })}
+            placeholder="Comments (optional), e.g. “Use the ID column, not the title.”"
+            aria-label={`Fragment ${i + 1} comments`}
+          />
           <CodeEditor
             value={f.code}
             language={language}

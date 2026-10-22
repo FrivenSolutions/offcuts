@@ -6,9 +6,10 @@ Offcuts is a self-hosted code snippet manager. One person owns it. Visitors can 
 
 - **Snippets with fragments.** A snippet has a title, a source, a description, tags and one language. It holds one or more fragments. Each fragment has its own title and code.
   Example: the snippet "REST API Patches" holds the fragments "Lookup", "People Picker" and "Choice".
+- **Fragment comments.** Each fragment has an optional comments box. Comments show above the code. Web addresses in a comment become links.
 - **Syntax highlighting** for Power Query M, DAX, Power Fx, Power Automate, PySpark, Python, SQL, JSON, YAML, PowerShell, JavaScript, TypeScript, HTML, CSS, Bash, C# and Markdown.
 - **Language detection.** When you paste code, Offcuts guesses the language. A dropdown lets you change it.
-- **Search, filter and sort.** Search looks in titles, fragment titles, code, descriptions, sources and tags. Filter by tag, language and visibility. Sort by title or date. The app remembers your filters when you open a snippet and go back. Click the Offcuts logo to clear them.
+- **Search, filter and sort.** Search looks in titles, fragment titles, fragment comments, code, descriptions, sources and tags. Filter by tag, language and visibility. Sort by title or date. The app remembers your filters when you open a snippet and go back. Click the Offcuts logo to clear them.
 - **Card view and list view.** Both views show a highlighted preview of the code.
 - **Public snippets.** The home page shows public snippets to everyone. A login button gives access to the rest.
 - **Two-factor login.** Password plus a TOTP code from an authenticator app. (TOTP = time-based one-time password, the 6-digit code that changes every 30 seconds.)

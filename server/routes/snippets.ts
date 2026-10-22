@@ -17,6 +17,7 @@ interface SnippetRow {
 interface FragmentRow {
   id: number;
   title: string;
+  comment: string;
   code: string;
 }
 
@@ -27,7 +28,7 @@ interface SnippetInput {
   language: string;
   isPublic: boolean;
   tags: string[];
-  fragments: { title: string; code: string }[];
+  fragments: { title: string; comment: string; code: string }[];
 }
 
 interface Timestamps {
@@ -96,7 +97,11 @@ export function parseSnippetInput(body: unknown): SnippetInput {
     if (fr.code !== undefined && typeof fr.code !== "string") throw new Error(`Fragment ${i + 1} code must be text.`);
     const code = ((fr.code as string | undefined) ?? "").replace(/\r\n/g, "\n");
     if (code.length > 500_000) throw new Error(`Fragment ${i + 1} is too long.`);
-    return { title: str(fr.title, 200, `Fragment ${i + 1} title`), code };
+    return {
+      title: str(fr.title, 200, `Fragment ${i + 1} title`),
+      comment: str(fr.comment, 5000, `Fragment ${i + 1} comment`),
+      code,
+    };
   });
 
   return {
@@ -114,7 +119,7 @@ export function snippetRoutes(db: DB): Router {
   const r = Router();
 
   const fragmentsOf = db.prepare<[number], FragmentRow>(
-    "SELECT id, title, code FROM fragments WHERE snippet_id = ? ORDER BY position",
+    "SELECT id, title, comment, code FROM fragments WHERE snippet_id = ? ORDER BY position",
   );
   const tagsOf = db.prepare<[number], { tag: string }>(
     "SELECT tag FROM snippet_tags WHERE snippet_id = ? ORDER BY tag COLLATE NOCASE",
@@ -157,10 +162,10 @@ export function snippetRoutes(db: DB): Router {
       const like = likeEscape(term);
       where.push(`(
         s.title LIKE ? ESCAPE '\\' OR s.description LIKE ? ESCAPE '\\' OR s.source LIKE ? ESCAPE '\\'
-        OR EXISTS (SELECT 1 FROM fragments f WHERE f.snippet_id = s.id AND (f.title LIKE ? ESCAPE '\\' OR f.code LIKE ? ESCAPE '\\'))
+        OR EXISTS (SELECT 1 FROM fragments f WHERE f.snippet_id = s.id AND (f.title LIKE ? ESCAPE '\\' OR f.comment LIKE ? ESCAPE '\\' OR f.code LIKE ? ESCAPE '\\'))
         OR EXISTS (SELECT 1 FROM snippet_tags t WHERE t.snippet_id = s.id AND t.tag LIKE ? ESCAPE '\\')
       )`);
-      params.push(like, like, like, like, like, like);
+      params.push(like, like, like, like, like, like, like);
     }
 
     const tags = typeof req.query.tags === "string" ? req.query.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
@@ -225,8 +230,10 @@ export function snippetRoutes(db: DB): Router {
       db.prepare("DELETE FROM fragments WHERE snippet_id = ?").run(id);
       db.prepare("DELETE FROM snippet_tags WHERE snippet_id = ?").run(id);
     }
-    const addFragment = db.prepare("INSERT INTO fragments (snippet_id, position, title, code) VALUES (?, ?, ?, ?)");
-    input.fragments.forEach((f, i) => addFragment.run(snippetId, i, f.title, f.code));
+    const addFragment = db.prepare(
+      "INSERT INTO fragments (snippet_id, position, title, comment, code) VALUES (?, ?, ?, ?, ?)",
+    );
+    input.fragments.forEach((f, i) => addFragment.run(snippetId, i, f.title, f.comment, f.code));
     const addTag = db.prepare("INSERT INTO snippet_tags (snippet_id, tag) VALUES (?, ?)");
     input.tags.forEach((t) => addTag.run(snippetId, t));
     return snippetId;

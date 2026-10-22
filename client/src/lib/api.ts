@@ -1,6 +1,7 @@
 export interface Fragment {
   id?: number;
   title: string;
+  comment: string;
   code: string;
 }
 

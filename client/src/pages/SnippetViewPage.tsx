@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { LanguageBadge, TagList, VisibilityBadge } from "../components/Badges";
 import { CodeBlock } from "../components/CodeBlock";
 import { CopyButton } from "../components/CopyButton";
+import { LinkedText } from "../components/LinkedText";
 import { api, isUrl, type Snippet } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { browseHref } from "../lib/browseState";
@@ -100,6 +101,7 @@ export function SnippetViewPage() {
             <h2>{f.title || (snippet.fragments.length > 1 ? `Fragment ${i + 1}` : "Code")}</h2>
             <CopyButton text={f.code} />
           </div>
+          {f.comment && <LinkedText text={f.comment} className="fragment-comment" />}
           <CodeBlock code={f.code} language={snippet.language} lineNumbers />
         </section>
       ))}
